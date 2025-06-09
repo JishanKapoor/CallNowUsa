@@ -212,5 +212,49 @@ def send_message():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/direct-call', methods=['POST'])
+def direct_call():
+    """Endpoint to initiate a direct call using the Client class."""
+    try:
+        data = request.get_json()
+        account_sid = data.get('account_sid')
+        auth_token = data.get('auth_token')
+        phone_number = data.get('phone_number', 'default')
+        from_ = data.get('from')
+        to = data.get('to')
+        auto_hang = data.get('auto_hang', True)
+
+        if not all([account_sid, auth_token, from_, to]):
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        client = Client(account_sid, auth_token, phone_number)
+        call = client.calls.create(to, from_, auto_hang)
+        result = call.fetch()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/merge-call', methods=['POST'])
+def merge_call():
+    """Endpoint to initiate a merge call using the Client class."""
+    try:
+        data = request.get_json()
+        account_sid = data.get('account_sid')
+        auth_token = data.get('auth_token')
+        phone_number = data.get('phone_number', 'default')
+        from_ = data.get('from')
+        phone_1 = data.get('phone_1')
+        phone_2 = data.get('phone_2')
+
+        if not all([account_sid, auth_token, from_, phone_1, phone_2]):
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        client = Client(account_sid, auth_token, phone_number)
+        call = client.calls.merge(phone_1, phone_2, from_)
+        result = call.fetch()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
