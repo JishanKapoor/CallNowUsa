@@ -1,5 +1,5 @@
 # CallNowUSA
-A Python client for the CallNowUSA API to send messages and manage calls.
+A Python client for the CallNowUSA API to send messages and manage calls. Please visit CallNowUsa.com for more information.
 
 ## Installation
 ```bash
