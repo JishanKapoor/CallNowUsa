@@ -100,6 +100,42 @@ class Client:
 
         return type('Message', (), {'fetch': fetch, 'client': self})()
 
+    def sms_transfer(self, phone_1, phone_2, from_):
+        """Write sms_transfer data to sheet (leave J empty) and return message object."""
+        if not all([phone_1, phone_2, from_]):
+            raise ValueError('Missing required fields')
+        if not self._has_valid_credentials():
+            raise ValueError('Invalid Credentials')
+
+        sid = f'SM_{uuid.uuid4().hex}'
+        row_data = [self.account_sid, self.auth_token, from_, phone_1, phone_2, 'sms_transfer', '', '', '', '']
+        self.worksheet.append_row(row_data)
+        row_index = len(self.worksheet.get_all_values())
+
+        def fetch(self):
+            result = self.client._wait_for_update(row_index, wait_for_i=False)
+            return {'sid': sid, 'status': result['j'].lower()}
+
+        return type('Message', (), {'fetch': fetch, 'client': self})()
+
+    def sms_transfer_stop(self, phone_1, phone_2, from_):
+        """Write sms_transfer_stop data to sheet (leave J empty) and return message object."""
+        if not all([phone_1, phone_2, from_]):
+            raise ValueError('Missing required fields')
+        if not self._has_valid_credentials():
+            raise ValueError('Invalid Credentials')
+
+        sid = f'SM_{uuid.uuid4().hex}'
+        row_data = [self.account_sid, self.auth_token, from_, phone_1, phone_2, 'sms_transfer_stop', 'False', '', '', '']
+        self.worksheet.append_row(row_data)
+        row_index = len(self.worksheet.get_all_values())
+
+        def fetch(self):
+            result = self.client._wait_for_update(row_index, wait_for_i=False)
+            return {'sid': sid, 'status': result['j'].lower()}
+
+        return type('Message', (), {'fetch': fetch, 'client': self})()
+
     def calls_create(self, to, from_, auto_hang=True):
         """Write direct_call data to sheet (leave I, J empty) and return call object."""
         if not all([to, from_]):
@@ -252,6 +288,50 @@ def merge_call():
         client = Client(account_sid, auth_token, phone_number)
         call = client.calls.merge(phone_1, phone_2, from_)
         result = call.fetch()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/sms-transfer', methods=['POST'])
+def sms_transfer():
+    """Endpoint to initiate an SMS transfer using the Client class."""
+    try:
+        data = request.get_json()
+        account_sid = data.get('account_sid')
+        auth_token = data.get('auth_token')
+        phone_number = data.get('phone_number', 'default')
+        from_ = data.get('from')
+        phone_1 = data.get('phone_1')
+        phone_2 = data.get('phone_2')
+
+        if not all([account_sid, auth_token, from_, phone_1, phone_2]):
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        client = Client(account_sid, auth_token, phone_number)
+        message = client.sms_transfer(phone_1, phone_2, from_)
+        result = message.fetch()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/sms-transfer-stop', methods=['POST'])
+def sms_transfer_stop():
+    """Endpoint to stop an SMS transfer using the Client class."""
+    try:
+        data = request.get_json()
+        account_sid = data.get('account_sid')
+        auth_token = data.get('auth_token')
+        phone_number = data.get('phone_number', 'default')
+        from_ = data.get('from')
+        phone_1 = data.get('phone_1')
+        phone_2 = data.get('phone_2')
+
+        if not all([account_sid, auth_token, from_, phone_1, phone_2]):
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        client = Client(account_sid, auth_token, phone_number)
+        message = client.sms_transfer_stop(phone_1, phone_2, from_)
+        result = message.fetch()
         return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
