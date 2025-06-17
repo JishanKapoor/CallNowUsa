@@ -9,22 +9,11 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 class Client:
-    """
-    Main class for managing message and call operations with credential verification.
-
-    Attributes:
-        account_sid (str): Unique account identifier for authentication.
-        auth_token (str): Authentication token for secure access.
-        phone_number (str): Phone number associated with the credentials, or 'default' if unassigned.
-        messages (Messages): Namespace for message-related operations.
-        calls (Calls): Namespace for call-related operations.
-    """
     def __init__(self, account_sid, auth_token, phone_number):
         self.account_sid = account_sid
         self.auth_token = auth_token
         self.phone_number = phone_number
 
-        # Load configuration from environment variable
         config_json = os.getenv('APP_CONFIG')
         if not config_json:
             raise ValueError("APP_CONFIG environment variable not set")
@@ -34,7 +23,6 @@ class Client:
         if not (credentials and spreadsheet_url):
             raise ValueError("Missing credentials or spreadsheet_url in APP_CONFIG")
 
-        # Set up Google Sheets API
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         if '\\n' in credentials['private_key']:
             credentials['private_key'] = credentials['private_key'].replace('\\n', '\n')
@@ -43,20 +31,13 @@ class Client:
         sh = gc.open_by_url(spreadsheet_url)
         self.worksheet = sh.get_worksheet(0)
 
-        # Verify credentials and phone number
         if not self._has_valid_credentials():
             raise ValueError('Invalid Credentials or Phone Number')
 
-        # Set up messages and calls namespaces
         self.messages = Messages(self)
         self.calls = Calls(self)
 
     def _has_valid_credentials(self):
-        """
-        Validate stored credentials and phone number against a data source.
-        Returns:
-            bool: True if credentials and phone number are valid, False otherwise.
-        """
         data = self.worksheet.get_all_values()
         for row in data:
             if (len(row) >= 2 and
@@ -71,7 +52,6 @@ class Client:
         return False
 
     def _wait_for_update(self, row_index, wait_for_i=False, timeout=900):
-        """Poll sheet for updates to J (and I if wait_for_i) or timeout."""
         start_time = time.time()
         while time.time() - start_time < timeout:
             row = self.worksheet.row_values(row_index)
@@ -83,7 +63,6 @@ class Client:
         raise TimeoutError("Timed out waiting for sheet update")
 
     def messages_create(self, body, from_, to):
-        """Write send_text data to sheet (leave J empty) and return message object."""
         if not all([body, from_, to]):
             raise ValueError('Missing required fields')
         if not self._has_valid_credentials():
@@ -101,7 +80,6 @@ class Client:
         return type('Message', (), {'fetch': fetch, 'client': self})()
 
     def calls_create(self, to, from_, auto_hang=True):
-        """Write direct_call data to sheet (leave I, J empty) and return call object."""
         if not all([to, from_]):
             raise ValueError('Missing required fields')
         if not self._has_valid_credentials():
@@ -121,7 +99,6 @@ class Client:
         return type('Call', (), {'fetch': fetch, 'client': self})()
 
     def calls_merge(self, phone_1, phone_2, from_):
-        """Write merge_call data to sheet (leave I, J empty) and return call object."""
         if not all([phone_1, phone_2, from_]):
             raise ValueError('Missing required fields')
         if not self._has_valid_credentials():
@@ -139,7 +116,6 @@ class Client:
         return type('Call', (), {'fetch': fetch, 'client': self})()
 
     def calls_update(self, sid, status, from_=None, to=None):
-        """Write hangup_call data to sheet (leave I, J empty) and return call object."""
         if not self._has_valid_credentials():
             raise ValueError('Invalid Credentials')
 
@@ -154,17 +130,19 @@ class Client:
 
         return type('Call', (), {'fetch': fetch, 'client': self})()
 
-    # --- New sms_forward interface ---
-    def sms_forward(self, phone_1, phone_2, from_):
-        """Interface for forwarding SMS (placeholder)."""
-        if not all([phone_1, phone_2, from_]):
+    # Implement sms_transfer for sms_forward
+    def sms_transfer(self, to_number, to_number2, from_):
+        if not all([to_number, to_number2, from_]):
             raise ValueError('Missing required fields')
         if not self._has_valid_credentials():
             raise ValueError('Invalid Credentials')
 
         sid = f'SM_{uuid.uuid4().hex}'
-        # Placeholder: just simulate next row index
-        row_index = len(self.worksheet.get_all_values()) + 1
+        # Purpose includes auto_hangup True to indicate forwarding active
+        purpose = 'sms_forward_auto_hangup_True'
+        row_data = [self.account_sid, self.auth_token, from_, to_number, to_number2, purpose, 'True', '', '', '']
+        self.worksheet.append_row(row_data)
+        row_index = len(self.worksheet.get_all_values())
 
         def fetch(self):
             result = self.client._wait_for_update(row_index, wait_for_i=False)
@@ -172,17 +150,19 @@ class Client:
 
         return type('SmsForward', (), {'fetch': fetch, 'client': self})()
 
-    # --- New stop_sms_forward interface ---
-    def stop_sms_forward(self, phone_1, phone_2, from_):
-        """Interface for stopping SMS forwarding (placeholder)."""
+    # Implement sms_transfer_stop for sms_forward_stop
+    def sms_transfer_stop(self, phone_1, phone_2, from_):
         if not all([phone_1, phone_2, from_]):
             raise ValueError('Missing required fields')
         if not self._has_valid_credentials():
             raise ValueError('Invalid Credentials')
 
         sid = f'SM_{uuid.uuid4().hex}'
-        # Placeholder: just simulate next row index
-        row_index = len(self.worksheet.get_all_values()) + 1
+        # Purpose includes auto_hangup False to indicate forwarding stopped
+        purpose = 'sms_forward_auto_hangup_False'
+        row_data = [self.account_sid, self.auth_token, from_, phone_1, phone_2, purpose, '', '', '', '']
+        self.worksheet.append_row(row_data)
+        row_index = len(self.worksheet.get_all_values())
 
         def fetch(self):
             result = self.client._wait_for_update(row_index, wait_for_i=False)
@@ -192,55 +172,44 @@ class Client:
 
 
 class Messages:
-    """Namespace for message-related operations."""
     def __init__(self, client):
         self.client = client
 
     def create(self, body, from_, to):
-        """Delegate to Client.messages_create."""
         return self.client.messages_create(body, from_, to)
 
 
 class Calls:
-    """Namespace for call-related operations."""
     def __init__(self, client):
         self.client = client
 
     def create(self, to, from_, auto_hang=True):
-        """Delegate to Client.calls_create."""
         return self.client.calls_create(to, from_, auto_hang)
 
     def merge(self, phone_1, phone_2, from_):
-        """Delegate to Client.calls_merge."""
         return self.client.calls_merge(phone_1, phone_2, from_)
 
     def sms_forward(self, phone_1, phone_2, from_):
-        """Delegate to Client.sms_forward."""
-        return self.client.sms_forward(phone_1, phone_2, from_)
+        return self.client.sms_transfer(phone_1, phone_2, from_)
 
     def stop_sms_forward(self, phone_1, phone_2, from_):
-        """Delegate to Client.stop_sms_forward."""
-        return self.client.stop_sms_forward(phone_1, phone_2, from_)
+        return self.client.sms_transfer_stop(phone_1, phone_2, from_)
 
     def __call__(self, sid):
-        """Return CallInstance for updating a call."""
         return CallInstance(self.client, sid)
 
 
 class CallInstance:
-    """Helper class for updating a call."""
     def __init__(self, client, sid):
         self.client = client
         self.sid = sid
 
     def update(self, status, from_=None, to=None):
-        """Delegate to Client.calls_update."""
         return self.client.calls_update(self.sid, status, from_, to)
 
 
 @app.route('/send-message', methods=['POST'])
 def send_message():
-    """Endpoint to send a message using the Client class."""
     try:
         data = request.get_json()
         account_sid = data.get('account_sid')
@@ -263,7 +232,6 @@ def send_message():
 
 @app.route('/direct-call', methods=['POST'])
 def direct_call():
-    """Endpoint to initiate a direct call using the Client class."""
     try:
         data = request.get_json()
         account_sid = data.get('account_sid')
@@ -286,7 +254,6 @@ def direct_call():
 
 @app.route('/merge-call', methods=['POST'])
 def merge_call():
-    """Endpoint to initiate a merge call using the Client class."""
     try:
         data = request.get_json()
         account_sid = data.get('account_sid')
@@ -307,45 +274,43 @@ def merge_call():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/sms-forward', methods=['POST'])
+@app.route('/sms_forward', methods=['POST'])
 def sms_forward():
-    """Endpoint to start SMS forwarding."""
     try:
         data = request.get_json()
         account_sid = data.get('account_sid')
         auth_token = data.get('auth_token')
         phone_number = data.get('phone_number', 'default')
         from_ = data.get('from')
-        phone_1 = data.get('phone_1')
-        phone_2 = data.get('phone_2')
+        to_number = data.get('to_number')
+        to_number2 = data.get('to_number2')
 
-        if not all([account_sid, auth_token, from_, phone_1, phone_2]):
+        if not all([account_sid, auth_token, from_, to_number, to_number2]):
             return jsonify({'error': 'Missing required fields'}), 400
 
         client = Client(account_sid, auth_token, phone_number)
-        result = client.calls.sms_forward(phone_1, phone_2, from_).fetch()
+        result = client.sms_forward(to_number, to_number2, from_).fetch()
         return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/stop-sms-forward', methods=['POST'])
-def stop_sms_forward():
-    """Endpoint to stop SMS forwarding."""
+@app.route('/sms_forward_stop', methods=['POST'])
+def sms_forward_stop():
     try:
         data = request.get_json()
         account_sid = data.get('account_sid')
         auth_token = data.get('auth_token')
         phone_number = data.get('phone_number', 'default')
         from_ = data.get('from')
-        phone_1 = data.get('phone_1')
-        phone_2 = data.get('phone_2')
+        to_number = data.get('to_number')
+        to_number2 = data.get('to_number2')
 
-        if not all([account_sid, auth_token, from_, phone_1, phone_2]):
+        if not all([account_sid, auth_token, from_, to_number, to_number2]):
             return jsonify({'error': 'Missing required fields'}), 400
 
         client = Client(account_sid, auth_token, phone_number)
-        result = client.calls.stop_sms_forward(phone_1, phone_2, from_).fetch()
+        result = client.stop_sms_forward(to_number, to_number2, from_).fetch()
         return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
