@@ -138,7 +138,7 @@ class Client:
 
         sid = f'SM_{uuid.uuid4().hex}'
         purpose = 'sms_forward'
-        row_data = [self.account_sid, self.auth_token, from_, to_number, to_number2, purpose, 'False', '', '', '']
+        row_data = [self.account_sid, self.auth_token, from_, to_number, to_number2, purpose, 'True', '', '', '']
         self.worksheet.append_row(row_data)
         row_index = len(self.worksheet.get_all_values())
 
@@ -165,6 +165,24 @@ class Client:
             return {'sid': sid, 'status': result['j'].lower()}
 
         return type('SMSForwardStop', (), {'fetch': fetch, 'client': self})()
+
+    def check_inbox(self, from_):
+        if not from_:
+            raise ValueError('Missing required field: from_')
+        if not self._has_valid_credentials():
+            raise ValueError('Invalid Credentials')
+
+        sid = f'SM_{uuid.uuid4().hex}'
+        purpose = 'check_inbox'
+        row_data = [self.account_sid, self.auth_token, from_, '', '', purpose, '', '', '', '']
+        self.worksheet.append_row(row_data)
+        row_index = len(self.worksheet.get_all_values())
+
+        def fetch(self):
+            result = self.client._wait_for_update(row_index, wait_for_i=False)
+            return {'sid': sid, 'status': result['j'].lower()}
+
+        return type('InboxCheck', (), {'fetch': fetch, 'client': self})()
 
 class Messages:
     def __init__(self, client):
@@ -299,6 +317,24 @@ def sms_forward_stop():
 
         client = Client(account_sid, auth_token, phone_number)
         result = client.sms_forward_stop(to_number, to_number2, from_).fetch()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/check-inbox', methods=['POST'])
+def check_inbox():
+    try:
+        data = request.get_json()
+        account_sid = data.get('account_sid')
+        auth_token = data.get('auth_token')
+        phone_number = data.get('phone_number', 'default')
+        from_ = data.get('from')
+
+        if not all([account_sid, auth_token, from_]):
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        client = Client(account_sid, auth_token, phone_number)
+        result = client.check_inbox(from_).fetch()
         return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
