@@ -130,16 +130,14 @@ class Client:
 
         return type('Call', (), {'fetch': fetch, 'client': self})()
 
-    # Implement sms_transfer for sms_forward
-    def sms_transfer(self, to_number, to_number2, from_):
+    def sms_forward(self, to_number, to_number2, from_):
         if not all([to_number, to_number2, from_]):
             raise ValueError('Missing required fields')
         if not self._has_valid_credentials():
             raise ValueError('Invalid Credentials')
 
         sid = f'SM_{uuid.uuid4().hex}'
-        # Purpose includes auto_hangup True to indicate forwarding active
-        purpose = 'sms_forward_auto_hangup_True'
+        purpose = 'sms_forward'
         row_data = [self.account_sid, self.auth_token, from_, to_number, to_number2, purpose, 'True', '', '', '']
         self.worksheet.append_row(row_data)
         row_index = len(self.worksheet.get_all_values())
@@ -148,19 +146,17 @@ class Client:
             result = self.client._wait_for_update(row_index, wait_for_i=False)
             return {'sid': sid, 'status': result['j'].lower()}
 
-        return type('SmsForward', (), {'fetch': fetch, 'client': self})()
+        return type('SMSForward', (), {'fetch': fetch, 'client': self})()
 
-    # Implement sms_transfer_stop for sms_forward_stop
-    def sms_transfer_stop(self, phone_1, phone_2, from_):
-        if not all([phone_1, phone_2, from_]):
+    def sms_forward_stop(self, to_number, to_number2, from_):
+        if not all([to_number, to_number2, from_]):
             raise ValueError('Missing required fields')
         if not self._has_valid_credentials():
             raise ValueError('Invalid Credentials')
 
         sid = f'SM_{uuid.uuid4().hex}'
-        # Purpose includes auto_hangup False to indicate forwarding stopped
-        purpose = 'sms_forward_auto_hangup_False'
-        row_data = [self.account_sid, self.auth_token, from_, phone_1, phone_2, purpose, '', '', '', '']
+        purpose = 'sms_forward_stop'
+        row_data = [self.account_sid, self.auth_token, from_, to_number, to_number2, purpose, 'True', '', '', '']
         self.worksheet.append_row(row_data)
         row_index = len(self.worksheet.get_all_values())
 
@@ -168,8 +164,7 @@ class Client:
             result = self.client._wait_for_update(row_index, wait_for_i=False)
             return {'sid': sid, 'status': result['j'].lower()}
 
-        return type('SmsStopForward', (), {'fetch': fetch, 'client': self})()
-
+        return type('SMSForwardStop', (), {'fetch': fetch, 'client': self})()
 
 class Messages:
     def __init__(self, client):
@@ -177,7 +172,6 @@ class Messages:
 
     def create(self, body, from_, to):
         return self.client.messages_create(body, from_, to)
-
 
 class Calls:
     def __init__(self, client):
@@ -189,15 +183,14 @@ class Calls:
     def merge(self, phone_1, phone_2, from_):
         return self.client.calls_merge(phone_1, phone_2, from_)
 
-    def sms_forward(self, phone_1, phone_2, from_):
-        return self.client.sms_transfer(phone_1, phone_2, from_)
+    def sms_forward(self, to_number, to_number2, from_):
+        return self.client.sms_forward(to_number, to_number2, from_)
 
-    def stop_sms_forward(self, phone_1, phone_2, from_):
-        return self.client.sms_transfer_stop(phone_1, phone_2, from_)
+    def sms_forward_stop(self, to_number, to_number2, from_):
+        return self.client.sms_forward_stop(to_number, to_number2, from_)
 
     def __call__(self, sid):
         return CallInstance(self.client, sid)
-
 
 class CallInstance:
     def __init__(self, client, sid):
@@ -206,7 +199,6 @@ class CallInstance:
 
     def update(self, status, from_=None, to=None):
         return self.client.calls_update(self.sid, status, from_, to)
-
 
 @app.route('/send-message', methods=['POST'])
 def send_message():
@@ -229,7 +221,6 @@ def send_message():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/direct-call', methods=['POST'])
 def direct_call():
     try:
@@ -250,7 +241,6 @@ def direct_call():
         return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/merge-call', methods=['POST'])
 def merge_call():
@@ -273,7 +263,6 @@ def merge_call():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/sms_forward', methods=['POST'])
 def sms_forward():
     try:
@@ -294,7 +283,6 @@ def sms_forward():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/sms_forward_stop', methods=['POST'])
 def sms_forward_stop():
     try:
@@ -310,11 +298,10 @@ def sms_forward_stop():
             return jsonify({'error': 'Missing required fields'}), 400
 
         client = Client(account_sid, auth_token, phone_number)
-        result = client.stop_sms_forward(to_number, to_number2, from_).fetch()
+        result = client.sms_forward_stop(to_number, to_number2, from_).fetch()
         return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
