@@ -138,7 +138,7 @@ class Client:
 
         sid = f'SM_{uuid.uuid4().hex}'
         purpose = 'sms_forward'
-        row_data = [self.account_sid, self.auth_token, from_, to_number, to_number2, purpose, 'True', '', '', '']
+        row_data = [self.account_sid, self.auth_token, from_, to_number, to_number2, purpose, 'False', '', '', '']
         self.worksheet.append_row(row_data)
         row_index = len(self.worksheet.get_all_values())
 
